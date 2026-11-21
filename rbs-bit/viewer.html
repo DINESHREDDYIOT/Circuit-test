@@ -1,0 +1,429 @@
+<title>RBS bit Viewer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap">
+<style>
+/* Layout: one-screen workbench in the RBS Circuit Lab's look: view bar on top, the 3D stage, and a part panel on the right (stacks on phones). */
+:root {
+  --bg: #f4f2fa; --panel: #ffffff; --tint: #f8f6ff; --line: #e6e1f4;
+  --ink: #241b4d; --muted: #625b86; --soft: #8d87a8;
+  --accent: #f26b3a; --accent-ink: #ffffff; --violet: #7c5ce0; --ok: #1f9d68; --led: #ff2a14;
+  --stage-a: #f3f4f8; --stage-b: #d6dae4;
+  --font: 'Outfit', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  --shadow: 0 1px 2px rgba(36, 27, 77, .05), 0 12px 28px -18px rgba(36, 27, 77, .28);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #110f18; --panel: #1a1724; --tint: #221e2e; --line: #2d2940; --ink: #ece9f7; --muted: #a49ec3; --soft: #7d7798;
+  --accent: #ff8656; --accent-ink: #1b0f0a; --violet: #a08bff; --ok: #3ccf8e; --led: #ff4b36; --stage-a: #2a2d37; --stage-b: #121419;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 30px -18px rgba(0, 0, 0, .7); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #110f18; --panel: #1a1724; --tint: #221e2e; --line: #2d2940; --ink: #ece9f7; --muted: #a49ec3; --soft: #7d7798;
+  --accent: #ff8656; --accent-ink: #1b0f0a; --violet: #a08bff; --ok: #3ccf8e; --led: #ff4b36; --stage-a: #2a2d37; --stage-b: #121419;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 30px -18px rgba(0, 0, 0, .7); color-scheme: dark }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2.5px solid var(--violet); outline-offset: 2px; }
+.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 352px; grid-template-rows: auto minmax(0, 1fr); gap: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px; box-sizing: border-box; }
+
+/* top bar: name, projection and the eight views */
+.top { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -.01em; margin-right: auto; }
+.brand b { color: var(--accent); }
+.brand small { font: 600 11px/1 var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 5px 8px; letter-spacing: .04em; }
+.seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 2px; box-shadow: var(--shadow); flex-wrap: wrap; }
+.seg button { border: 0; background: none; border-radius: 9px; padding: 7px 11px; font-weight: 600; font-size: 13.5px; color: var(--muted); white-space: nowrap; }
+.seg button:hover { color: var(--ink); background: var(--tint); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+
+/* the 3D stage */
+.stage { position: relative; min-height: 0; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow);
+  background: radial-gradient(120% 90% at 50% 38%, var(--stage-a), var(--stage-b)); touch-action: none; }
+.stage canvas { display: block; width: 100%; height: 100%; }
+.hint { position: absolute; left: 14px; bottom: 12px; right: 14px; display: flex; gap: 8px 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); pointer-events: none; }
+.hint span { background: color-mix(in srgb, var(--panel) 82%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--panel); font-size: 12.5px; font-weight: 600; padding: 5px 9px; border-radius: 8px; white-space: nowrap; transform: translate(12px, 14px); }
+.mode { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; justify-content: center; pointer-events: none; }
+.mode span { background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 13px; border-radius: 10px; padding: 7px 12px; box-shadow: var(--shadow); }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-weight: 600; }
+
+/* the side panel */
+.panel { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding-bottom: 4px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }
+.card h2 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sel-name { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }
+.sel-desc { margin: 0; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.chip { font: 600 11px/1 var(--mono); padding: 4px 7px; border-radius: 999px; background: var(--tint); color: var(--violet); border: 1px solid var(--line); letter-spacing: .02em; text-transform: none; }
+.chip.on { color: var(--ok); }
+.specs { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 13px; }
+.specs dt { color: var(--muted); } .specs dd { margin: 0; font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; text-align: right; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--line); background: var(--tint); border-radius: 10px; padding: 8px 12px; font-weight: 600; font-size: 13.5px; }
+.btn:hover { border-color: var(--violet); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--panel); }
+.grid5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; max-width: 220px; }
+.grid5 button { aspect-ratio: 1; border-radius: 8px; border: 1px solid var(--line); background: var(--tint); max-width: 100%; }
+.grid5 button[aria-pressed="true"] { background: var(--led); border-color: var(--led); box-shadow: 0 0 10px color-mix(in srgb, var(--led) 55%, transparent); }
+.press { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.press button { border: 1px solid var(--line); background: var(--tint); border-radius: 12px; padding: 12px 6px; font-weight: 700; font-size: 15px; user-select: none; -webkit-user-select: none; touch-action: none; }
+.press button small { display: block; font: 600 10.5px/1.2 var(--mono); color: var(--muted); margin-top: 3px; }
+.press button.down { background: var(--ink); color: var(--panel); transform: translateY(1px); }
+.press button.down small { color: inherit; }
+.wires { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.wires li { display: flex; align-items: center; gap: 8px; }
+.wires i { width: 14px; height: 14px; border-radius: 50%; flex: none; border: 1px solid var(--line); }
+.wires li span { flex: 1; min-width: 0; }
+.wires button { border: 0; background: none; color: var(--muted); font-size: 12.5px; text-decoration: underline; padding: 2px; }
+.empty { font-size: 13px; color: var(--soft); margin: 0; }
+.parts { display: flex; flex-direction: column; gap: 10px; }
+.parts h3 { margin: 0; font-size: 11.5px; font-weight: 700; color: var(--soft); letter-spacing: .08em; text-transform: uppercase; }
+.parts ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.parts button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 5px 10px; font-size: 13px; font-weight: 500; }
+.parts button:hover { border-color: var(--violet); color: var(--violet); }
+.parts button[aria-current="true"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; height: auto; min-height: 100%; }
+  .stage { height: 62svh; min-height: 340px; }
+  .panel { overflow: visible; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand"><span>RBS <b>bit</b></span><small>51.6 × 42.0 × 1.6 mm</small></div>
+    <div class="seg" role="group" aria-label="Projection">
+      <button type="button" id="projOrtho" aria-pressed="true">Orthographic</button>
+      <button type="button" id="projPersp" aria-pressed="false">Perspective</button>
+    </div>
+    <div class="seg" role="group" aria-label="Views" id="views">
+      <button type="button" data-view="front" aria-pressed="false">Front</button>
+      <button type="button" data-view="back" aria-pressed="false">Back</button>
+      <button type="button" data-view="left" aria-pressed="false">Left</button>
+      <button type="button" data-view="right" aria-pressed="false">Right</button>
+      <button type="button" data-view="top" aria-pressed="false">Top</button>
+      <button type="button" data-view="bottom" aria-pressed="false">Bottom</button>
+      <button type="button" data-view="iso" aria-pressed="true">Isometric</button>
+      <button type="button" data-view="persp" aria-pressed="false">3D</button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage" aria-label="3D model of the RBS bit board">
+    <div class="loading" id="loading">Building the board…</div>
+    <div class="mode" id="modeBanner" hidden><span id="modeText">Wire mode: click a ring</span></div>
+    <div class="tip" id="tip" hidden></div>
+    <div class="hint"><span>Drag to turn</span><span>Scroll to zoom</span><span>Right-drag to pan</span><span>Click a part to see it</span></div>
+  </main>
+
+  <aside class="panel" aria-label="Board details">
+    <section class="card" aria-live="polite">
+      <h2>Selected part <span class="chip" id="selCat">board</span></h2>
+      <p class="sel-name" id="selName">RBS bit</p>
+      <p class="sel-desc" id="selDesc">Click any part on the model to see what it is.</p>
+      <dl class="specs" id="selSpecs"></dl>
+      <div class="row" id="selActions"></div>
+    </section>
+
+    <section class="card">
+      <h2>LED display <span class="chip" id="ledCount">0 on</span></h2>
+      <div class="grid5" id="grid" role="group" aria-label="LED display, 5 by 5"></div>
+      <div class="row">
+        <button type="button" class="btn" data-pat="heart">Heart</button>
+        <button type="button" class="btn" data-pat="smile">Smile</button>
+        <button type="button" class="btn" data-pat="all">All on</button>
+        <button type="button" class="btn" data-pat="clear">Clear</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Buttons <span class="chip" id="btnState">none pressed</span></h2>
+      <div class="press">
+        <button type="button" data-btn="A" id="pressA">A<small>pin 5</small></button>
+        <button type="button" data-btn="B" id="pressB">B<small>pin 11</small></button>
+        <button type="button" data-btn="RESET" id="pressR">Reset<small>back</small></button>
+      </div>
+      <p class="empty">Hold a button here, or press it on the model.</p>
+    </section>
+
+    <section class="card">
+      <h2>Wires <span class="chip" id="wireCount">0</span></h2>
+      <div class="row">
+        <button type="button" class="btn primary" id="wireMode" aria-pressed="false">Connect wires</button>
+        <button type="button" class="btn" id="wireClear">Remove all</button>
+      </div>
+      <ul class="wires" id="wireList"></ul>
+      <p class="empty" id="wireEmpty">Turn on Connect wires, click one ring (0, 1, 2, 3V or GND), then a second ring. Click the same ring twice for a single lead.</p>
+    </section>
+
+    <section class="card">
+      <h2>Parts</h2>
+      <div class="parts" id="parts"></div>
+    </section>
+  </aside>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createRBSBit, RBS_BIT_SPEC } from './rbs-bit.js';
+
+const $ = (s) => document.querySelector(s);
+const stage = $('#stage');
+
+/* ---------------- renderer, scene, light rig that follows the camera ---------------- */
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setClearColor(0x000000, 0);
+renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.7;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x7c7f8c, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 1.6); key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, near: 1, far: 600 }); key.shadow.bias = -0.0003; key.shadow.normalBias = 0.02;
+scene.add(key, key.target);
+const fill = new THREE.DirectionalLight(0xe4e9ff, 0.45); scene.add(fill, fill.target);
+
+/* ---------------- the board: stood upright, front facing you, pads at the bottom ---------------- */
+try { await Promise.race([Promise.all(['700 20px Outfit', '800 20px Outfit', '600 20px "JetBrains Mono"', '700 20px "JetBrains Mono"'].map((f) => document.fonts.load(f))), new Promise((r) => setTimeout(r, 2500))]); } catch { /* fallback fonts */ }
+const bit = createRBSBit();
+const holder = new THREE.Group(); holder.rotation.x = Math.PI / 2; holder.position.z = -RBS_BIT_SPEC.thickness / 2; holder.add(bit.group); scene.add(holder);
+bit.setStatusLed('power', true);
+$('#loading').hidden = true;
+
+/* ---------------- cameras: orthographic and perspective share one orbit ---------------- */
+const persp = new THREE.PerspectiveCamera(30, 1, 0.5, 4000);
+const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 4000);
+const BASE_H = 30;   // the orthographic frustum's half-height before zoom
+let camera = ortho;
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.14; controls.screenSpacePanning = true; controls.minDistance = 20; controls.maxDistance = 900; controls.minZoom = 0.25; controls.maxZoom = 14;
+const VIEWS = {
+  front: { dir: [0, 0, 1], proj: 'ortho' }, back: { dir: [0, 0, -1], proj: 'ortho' },
+  left: { dir: [-1, 0, 0], proj: 'ortho' }, right: { dir: [1, 0, 0], proj: 'ortho' },
+  top: { dir: [0, 1, 0.0008], proj: 'ortho' }, bottom: { dir: [0, -1, 0.0008], proj: 'ortho' },
+  iso: { dir: [1, 1, 1], proj: 'ortho' }, persp: { dir: [0.62, 0.38, 1], proj: 'persp' },
+};
+let currentView = 'iso';
+const aspect = () => { const r = stage.getBoundingClientRect(); return Math.max(0.2, r.width / Math.max(1, r.height)); };
+function resize() {
+  const r = stage.getBoundingClientRect(); renderer.setSize(r.width, r.height, false);
+  persp.aspect = aspect(); persp.updateProjectionMatrix();
+  Object.assign(ortho, { left: -BASE_H * aspect(), right: BASE_H * aspect(), top: BASE_H, bottom: -BASE_H }); ortho.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage); resize();
+// how much of the board shows from a direction: half extents across and up, and how deep it is
+function extent(dir) {
+  const f = dir.clone().normalize().negate(), up = new THREE.Vector3(0, 1, 0), right = new THREE.Vector3().crossVectors(f, up).normalize(), u = new THREE.Vector3().crossVectors(right, f).normalize();
+  const box = new THREE.Box3(), c = new THREE.Vector3(); let hx = 0, hy = 0, hz = 0;
+  for (const m of bit.pickables) box.expandByObject(m);   // the board and its parts, not the wires hanging off it
+  for (let i = 0; i < 8; i++) { c.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z); hx = Math.max(hx, Math.abs(c.dot(right))); hy = Math.max(hy, Math.abs(c.dot(u))); hz = Math.max(hz, Math.abs(c.dot(f))); }
+  return { half: Math.max(hy, hx / aspect()) * 1.14, depth: hz };
+}
+let fly = null;
+function setProjection(p) {
+  const want = p === 'persp' ? persp : ortho; $('#projOrtho').setAttribute('aria-pressed', String(want === ortho)); $('#projPersp').setAttribute('aria-pressed', String(want === persp));
+  if (want === camera) return;
+  const dir = camera.position.clone().sub(controls.target), dist = dir.length();
+  if (want === ortho) { const half = dist * Math.tan(THREE.MathUtils.degToRad(persp.fov / 2)); ortho.zoom = BASE_H / half; ortho.position.copy(controls.target).addScaledVector(dir.normalize(), Math.max(dist, 300)); }
+  else { const half = BASE_H / ortho.zoom; persp.position.copy(controls.target).addScaledVector(dir.normalize(), half / Math.tan(THREE.MathUtils.degToRad(persp.fov / 2))); }
+  want.quaternion.copy(camera.quaternion); want.updateProjectionMatrix(); camera = want; controls.object = camera; controls.update();
+}
+function setView(name, animate = true) {
+  const v = VIEWS[name]; currentView = name;
+  document.querySelectorAll('#views button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === name)));
+  setProjection(v.proj);
+  const dir = new THREE.Vector3(...v.dir).normalize(), { half, depth } = extent(dir), target = new THREE.Vector3(0, 0, 0);
+  const to = camera === ortho ? { pos: target.clone().addScaledVector(dir, 320), zoom: BASE_H / half } : { pos: target.clone().addScaledVector(dir, half / Math.tan(THREE.MathUtils.degToRad(persp.fov / 2)) + depth), zoom: 1 };
+  const from = { pos: camera.position.clone(), target: controls.target.clone(), zoom: camera.zoom, dir: camera.position.clone().sub(controls.target).normalize(), dist: camera.position.distanceTo(controls.target) };
+  fly = { t0: performance.now(), ms: animate && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 520 : 1, from, to: { ...to, target, dir, dist: to.pos.distanceTo(target) } };
+}
+function stepFly(now) {
+  if (!fly) return; const k = Math.min(1, (now - fly.t0) / fly.ms), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+  const d = new THREE.Vector3().copy(fly.from.dir).lerp(fly.to.dir, e);
+  if (fly.from.dir.dot(fly.to.dir) < -0.5) {   // a half turn (front to back): swing round the side, not through the board
+    const side = new THREE.Vector3().crossVectors(fly.from.dir, new THREE.Vector3(0, 1, 0)); if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
+    d.addScaledVector(side.normalize(), Math.sin(Math.PI * e));
+  }
+  if (d.lengthSq() < 1e-6) d.copy(fly.to.dir); d.normalize();
+  controls.target.lerpVectors(fly.from.target, fly.to.target, e);
+  camera.position.copy(controls.target).addScaledVector(d, fly.from.dist + (fly.to.dist - fly.from.dist) * e);
+  if (camera === ortho) { camera.zoom = fly.from.zoom + (fly.to.zoom - fly.from.zoom) * e; camera.updateProjectionMatrix(); }
+  camera.lookAt(controls.target); if (k >= 1) fly = null; controls.update();
+}
+document.querySelectorAll('#views button').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
+$('#projOrtho').addEventListener('click', () => setProjection('ortho'));
+$('#projPersp').addEventListener('click', () => setProjection('persp'));
+controls.addEventListener('start', () => { fly = null; });
+
+/* ---------------- selection panel ---------------- */
+const CATS = { board: 'board', led: 'LED', input: 'input', pin: 'pin', edge: 'edge contact', passive: 'small part', component: 'chip / part' };
+const sideOf = (id) => { const p = bit.info(id); if (!p) return 'front'; const b = new THREE.Box3(); for (const m of p.meshes) b.expandByObject(m); const c = bit.group.worldToLocal(b.getCenter(new THREE.Vector3())); return c.y < 0 ? 'back' : 'front'; };
+function showPart(id) {
+  const p = bit.info(id); if (!p) return;
+  bit.highlight(id === 'pcb' ? null : id);
+  $('#selName').textContent = p.name; $('#selDesc').textContent = p.description; $('#selCat').textContent = CATS[p.category] || p.category;
+  const specs = [];
+  if (id === 'pcb') specs.push(['Outline', '51.60 × 42.00 mm'], ['Board thickness', '1.6 mm'], ['Overall depth', '11.65 mm'], ['Edge contacts', '25 on a 1.27 mm pitch'], ['Rings', '5, for 4 mm plugs'], ['LED pitch', '4.0 mm']);
+  const led = bit.leds.find((l) => l.id === id); if (led) specs.push(['State', led.target > 0.5 ? 'On' : 'Off'], ['Position', `row ${led.row + 1}, column ${led.col + 1}`]);
+  if (p.pin) { specs.push(['Signal', p.pin]); const w = wires.find((x) => x.a === p.pin || x.b === p.pin); if (p.category === 'pin') specs.push(['Wire', w ? (w.a === w.b ? 'single lead' : `to ${w.a === p.pin ? w.b : w.a}`) : 'none']); }
+  if (p.button) specs.push(['State', bit.isPressed(p.button) ? 'Pressed' : 'Up']);
+  specs.push(['Side', sideOf(id)]);
+  $('#selSpecs').innerHTML = specs.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  const acts = [];
+  if (led) acts.push(`<button type="button" class="btn" data-act="led">${led.target > 0.5 ? 'Switch off' : 'Switch on'}</button>`);
+  if (p.category === 'pin') acts.push(`<button type="button" class="btn" data-act="wire">Connect a wire here</button>`);
+  if (id !== 'pcb') acts.push(`<button type="button" class="btn" data-act="look">Look at it</button>`);
+  $('#selActions').innerHTML = acts.join('');
+  document.querySelectorAll('#parts button').forEach((b) => b.setAttribute('aria-current', String(b.dataset.part === id || !!(b.dataset.group && b.dataset.group.split(',').includes(id)))));
+  selectedId = id;
+}
+let selectedId = 'pcb';
+$('#selActions').addEventListener('click', (e) => {
+  const act = e.target.closest('button')?.dataset.act; if (!act) return;
+  if (act === 'led') { const l = bit.leds.find((x) => x.id === selectedId); bit.toggleLed(l.col, l.row); syncGrid(); showPart(selectedId); }
+  if (act === 'wire') { setWireMode(true); clickPin(bit.info(selectedId).pin); }
+  if (act === 'look') setView(sideOf(selectedId) === 'back' ? 'back' : 'front');
+});
+
+/* ---------------- LED display ---------------- */
+const grid = $('#grid');
+grid.innerHTML = Array.from({ length: 25 }, (_, i) => `<button type="button" data-i="${i}" aria-label="LED row ${Math.floor(i / 5) + 1}, column ${(i % 5) + 1}" aria-pressed="false"></button>`).join('');
+function syncGrid() {
+  let n = 0; grid.querySelectorAll('button').forEach((b, i) => { const on = bit.leds[i].target > 0.5; n += on; b.setAttribute('aria-pressed', String(on)); });
+  $('#ledCount').textContent = `${n} on`; $('#ledCount').classList.toggle('on', n > 0);
+}
+grid.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; const i = +b.dataset.i; bit.toggleLed(i % 5, Math.floor(i / 5)); syncGrid(); showPart(bit.leds[i].id); });
+const PATTERNS = { heart: ['01010', '11111', '11111', '01110', '00100'], smile: ['00000', '01010', '00000', '10001', '01110'], all: ['11111', '11111', '11111', '11111', '11111'], clear: ['00000', '00000', '00000', '00000', '00000'] };
+document.querySelectorAll('[data-pat]').forEach((b) => b.addEventListener('click', () => { bit.setDisplay(PATTERNS[b.dataset.pat].map((r) => r.replace(/1/g, '9'))); syncGrid(); if (bit.leds.some((l) => l.id === selectedId)) showPart(selectedId); }));
+bit.setDisplay(PATTERNS.heart.map((r) => r.replace(/1/g, '9'))); syncGrid();
+
+/* ---------------- buttons A, B and reset: hold to press ---------------- */
+function setPressed(id, down) {
+  bit.pressButton(id, down); document.querySelector(`[data-btn="${id}"]`)?.classList.toggle('down', down);
+  const held = ['A', 'B', 'RESET'].filter((k) => bit.isPressed(k)); $('#btnState').textContent = held.length ? held.join(' + ') + ' pressed' : 'none pressed';
+  if (bit.info(selectedId)?.button) showPart(selectedId);
+}
+document.querySelectorAll('[data-btn]').forEach((b) => {
+  const id = b.dataset.btn;
+  b.addEventListener('pointerdown', (e) => { b.setPointerCapture?.(e.pointerId); setPressed(id, true); });
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, () => setPressed(id, false));
+  b.addEventListener('keydown', (e) => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); setPressed(id, true); } });
+  b.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') setPressed(id, false); });
+});
+
+/* ---------------- wires: crocodile leads clipped onto the rings ---------------- */
+const COLORS = [['red', 0xe2443a], ['black', 0x2b2930], ['yellow', 0xf2c230], ['green', 0x2fa36b], ['blue', 0x2f6fe0], ['white', 0xe9e9ee]];
+let wires = [], wireMode = false, pending = null, colorIx = 0;
+const steel = new THREE.MeshStandardMaterial({ color: 0xc9cdd3, metalness: 1, roughness: 0.3 });
+const pinById = (id) => bit.pins.find((p) => p.id === id);
+function clipAt(pin, color) {   // in the board's own frame: jaws over the ring from the edge, boot running out past the edge
+  const g = new THREE.Group(), T = RBS_BIT_SPEC.thickness, edge = RBS_BIT_SPEC.height / 2, boot = new THREE.MeshPhysicalMaterial({ color, roughness: 0.45, clearcoat: 0.3 });
+  g.position.set(pin.position.x, T / 2, edge); bit.group.add(g);
+  for (const s of [1, -1]) { const j = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.6, 7.4), steel); j.position.set(0, s * (T / 2 + 0.32), -3.1); j.castShadow = true; g.add(j);
+    const teeth = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.3, 1.2), steel); teeth.position.set(0, s * (T / 2 + 0.1), -6.3); g.add(teeth); }
+  const body = new THREE.Mesh(new THREE.BoxGeometry(3.4, T + 2.6, 5.0), steel); body.position.set(0, 0, 2.0); body.castShadow = true; g.add(body);
+  const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 2.7, 15, 24), boot); sleeve.rotation.x = Math.PI / 2; sleeve.position.set(0, 0, 11.5); sleeve.castShadow = true; g.add(sleeve);
+  g.userData.end = new THREE.Vector3(pin.position.x, T / 2, edge + 19);
+  return g;
+}
+function addWire(a, b) {
+  const [cname, color] = COLORS[colorIx++ % COLORS.length], A = pinById(a), B = pinById(b), objs = [clipAt(A, color)];
+  if (b !== a) objs.push(clipAt(B, color));
+  const p0 = objs[0].userData.end, pts = b !== a
+    ? [p0, p0.clone().add(new THREE.Vector3(0, 2, 10)), new THREE.Vector3((A.position.x + B.position.x) / 2, 4, p0.z + 18 + Math.abs(A.position.x - B.position.x) * 0.25), objs[1].userData.end.clone().add(new THREE.Vector3(0, 2, 10)), objs[1].userData.end]
+    : [p0, p0.clone().add(new THREE.Vector3(1, 2, 12)), p0.clone().add(new THREE.Vector3(5, 4, 30)), p0.clone().add(new THREE.Vector3(12, 6, 50))];
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 80, 0.95, 12), new THREE.MeshPhysicalMaterial({ color, roughness: 0.5, clearcoat: 0.25 }));
+  tube.castShadow = true; bit.group.add(tube); objs.push(tube);
+  wires.push({ a, b, cname, color, objs }); renderWires();
+}
+function removeWire(i) { const w = wires[i]; for (const o of w.objs) { o.removeFromParent(); o.traverse((m) => { if (m.isMesh) { m.geometry.dispose(); if (m.material !== steel) m.material.dispose(); } }); } wires.splice(i, 1); renderWires(); }
+function renderWires() {
+  $('#wireCount').textContent = String(wires.length); $('#wireEmpty').hidden = wires.length > 0;
+  $('#wireList').innerHTML = wires.map((w, i) => `<li><i style="background:#${w.color.toString(16).padStart(6, '0')}"></i><span>${w.a === w.b ? `${w.a}: single ${w.cname} lead` : `${w.a} to ${w.b}, ${w.cname} lead`}</span><button type="button" data-rm="${i}">Remove</button></li>`).join('');
+  if (bit.info(selectedId)?.category === 'pin') showPart(selectedId);
+}
+$('#wireList').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) removeWire(+b.dataset.rm); });
+$('#wireClear').addEventListener('click', () => { while (wires.length) removeWire(0); pending = null; banner(); });
+function setWireMode(on) { wireMode = on; pending = null; $('#wireMode').setAttribute('aria-pressed', String(on)); $('#wireMode').textContent = on ? 'Done connecting' : 'Connect wires'; banner(); }
+$('#wireMode').addEventListener('click', () => setWireMode(!wireMode));
+function banner(msg) { $('#modeBanner').hidden = !wireMode; $('#modeText').textContent = msg || (pending ? `Ring ${pending} picked: click a second ring, or ${pending} again for a single lead` : 'Wire mode: click a ring (0, 1, 2, 3V or GND)'); }
+const used = (pin) => wires.some((w) => w.a === pin || w.b === pin);
+function clickPin(pin) {
+  if (!pending) { if (used(pin)) { banner(`Ring ${pin} already has a clip. Remove its wire first.`); return; } pending = pin; bit.highlight('pad-' + pin); banner(); return; }
+  if (pin !== pending && used(pin)) { banner(`Ring ${pin} already has a clip. Pick another ring.`); return; }
+  addWire(pending, pin); pending = null; banner();
+}
+
+/* ---------------- pointer: hover names, click to select, LEDs toggle, buttons press, rings take wires ---------------- */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), tip = $('#tip');
+function pickAt(x, y) {
+  const r = renderer.domElement.getBoundingClientRect(); ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera); const hit = ray.intersectObjects(bit.pickables, false)[0];
+  return hit ? { ...bit.resolve(hit.object), point: hit.point } : null;
+}
+let down = null, pressing = null;
+stage.addEventListener('pointerdown', (e) => {   // capture: decide before the orbit controls see the press
+  if (e.target !== renderer.domElement || e.button !== 0) return;
+  const h = pickAt(e.clientX, e.clientY); down = { x: e.clientX, y: e.clientY, h };
+  if (h && h.button && !wireMode) { pressing = h.button; controls.enabled = false; setPressed(pressing, true); showPart(h.part); }
+}, { capture: true });
+window.addEventListener('pointerup', (e) => {
+  if (pressing) { setPressed(pressing, false); pressing = null; controls.enabled = true; down = null; return; }
+  if (!down) return; const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5, h = down.h; down = null;
+  if (moved || e.target !== renderer.domElement) return;
+  if (!h) { if (wireMode && pending) { pending = null; banner(); bit.highlight(null); } else showPart('pcb'); return; }
+  if (wireMode) { if (h.pin) clickPin(h.pin); else banner('Click one of the big rings: 0, 1, 2, 3V or GND'); return; }
+  if (h.led) { bit.toggleLed(h.led.col, h.led.row); syncGrid(); }
+  showPart(h.part);
+});
+let hoverXY = null;
+renderer.domElement.addEventListener('pointermove', (e) => { hoverXY = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerleave', () => { hoverXY = null; tip.hidden = true; bit.hover(null); });
+function updateHover() {
+  if (!hoverXY || down) return; const h = pickAt(...hoverXY), r = stage.getBoundingClientRect();
+  bit.hover(h && h.part !== 'pcb' ? h.part : null);
+  if (h && h.part !== 'pcb') { const p = bit.info(h.part); tip.textContent = wireMode && h.pin ? `${p.name}: click to clip a wire` : h.led ? `${p.name}: click to switch` : h.button ? `${p.name}: hold to press` : p.name; tip.style.left = `${hoverXY[0] - r.left}px`; tip.style.top = `${hoverXY[1] - r.top}px`; tip.hidden = false; }
+  else tip.hidden = true;
+  renderer.domElement.style.cursor = h && (h.button || h.led || (wireMode && h.pin)) ? 'pointer' : h ? 'help' : 'grab';
+}
+
+/* ---------------- parts list ---------------- */
+const GROUPS = [
+  ['Front', [['button-a'], ['button-b'], ['touch-logo'], ['led-3-3', 'LED display (25)', bit.leds.map((l) => l.id)], ['mic-led']]],
+  ['Rings and edge', [['pad-P0', 'Pin 0'], ['pad-P1', 'Pin 1'], ['pad-P2', 'Pin 2'], ['pad-3V', '3V'], ['pad-GND', 'GND'], ['edge-P3', 'Small contacts (20)', [...bit.parts.keys()].filter((k) => k.startsWith('edge-') || k.startsWith('guard-'))]]],
+  ['Back', [['processor', 'Processor'], ['usb-interface', 'USB chip'], ['motion-sensor', 'Motion sensor'], ['speaker'], ['microphone'], ['antenna', 'Antenna'], ['usb', 'USB socket'], ['reset-button', 'Reset button'], ['battery-connector', 'Battery socket'], ['crystal', 'Crystal'], ['regulator', 'Regulator'], ['led-power', 'Power LED'], ['led-usb', 'USB LED'], ['c5', 'Small parts (25)', [...bit.parts.values()].filter((p) => p.category === 'passive').map((p) => p.id)]]],
+  ['Board', [['pcb', 'Circuit board']]],
+];
+$('#parts').innerHTML = GROUPS.map(([g, list]) => `<div><h3>${g}</h3><ul>${list.map(([id, label, group]) => `<li><button type="button" data-part="${id}"${group ? ` data-group="${group.join(',')}"` : ''} aria-current="false">${label || bit.info(id)?.name || id}</button></li>`).join('')}</ul></div>`).join('');
+$('#parts').addEventListener('click', (e) => { const b = e.target.closest('[data-part]'); if (!b) return; const id = b.dataset.part; showPart(id); if (id !== 'pcb') { const side = sideOf(id); if ((side === 'back') !== (currentView === 'back')) setView(side === 'back' ? 'back' : 'front'); } });
+
+/* ---------------- loop ---------------- */
+const clock = new THREE.Clock(); let hoverTick = 0;
+showPart('pcb'); setView('iso', false);
+renderer.setAnimationLoop((now) => {
+  const dt = Math.min(0.05, clock.getDelta());
+  stepFly(performance.now()); controls.update(); bit.update(dt);
+  if ((hoverTick++ & 1) === 0) updateHover();
+  // the light rig rides with the camera: key light up and to the left of it, fill from the right
+  const f = camera.position.clone().sub(controls.target).normalize(), right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), f); if (right.lengthSq() < 1e-6) right.set(1, 0, 0); right.normalize();
+  const up = new THREE.Vector3().crossVectors(f, right).normalize();
+  key.position.copy(controls.target).addScaledVector(f, 200).addScaledVector(up, 120).addScaledVector(right, -90); key.target.position.copy(controls.target);
+  fill.position.copy(controls.target).addScaledVector(f, 150).addScaledVector(right, 140).addScaledVector(up, -30); fill.target.position.copy(controls.target);
+  renderer.render(scene, camera);
+});
+window.__rbsBit = { bit, setView, setProjection, showPart, addWire, setPressed, controls, camera: () => camera };   // for tests and screenshots
+</script>

@@ -1,0 +1,25 @@
+{
+    "name": "rbs-bit-bluetooth",
+    "version": "1.0.0",
+    "description": "RBS bit Bluetooth receiver: no pairing, runs the Roboticschools controller app and RBS Circuit Lab commands",
+    "dependencies": {
+        "core": "*",
+        "bluetooth": "*"
+    },
+    "files": [
+        "main.ts",
+        "README.md"
+    ],
+    "preferredEditor": "tsprj",
+    "yotta": {
+        "config": {
+            "microbit-dal": {
+                "bluetooth": {
+                    "open": 1,
+                    "whitelist": 0,
+                    "security_level": null
+                }
+            }
+        }
+    }
+}
